@@ -1,0 +1,3 @@
+MASM MP3,,;
+LINK MP3,,,LIB291/MAP
+

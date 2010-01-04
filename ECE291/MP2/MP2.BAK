@@ -1,0 +1,303 @@
+        PAGE    78, 132
+        TITLE   MP2     DAVE DRIBIN     2/17/93
+; THIS PROGRAM THAT ACCEPTS A MEASUREMENT IN INCHES.  THE PROGRAM THEN
+; TAKES THIS VALUE AND PRINTS AND CONVERTS IT TO YARDS, FEET, AND
+; CENTIMETERS TO THE NEAREST 10TH.
+CR      EQU     0Dh
+LF      EQU     0Ah
+BEL     EQU     07h
+BS      EQU     08h
+DEL     EQU     7Fh
+CTRLD   EQU     04h
+AXTMP   EQU     16                      ; **TMP IS FOR SAVED REGISTERS
+DXTMP   EQU     10
+ESCKEY  EQU     1Bh
+        EXTRN   KBDIN:NEAR, DSPOUT:NEAR, DSPMSG:NEAR, ASCBIN:NEAR
+        EXTRN   DOSXIT:NEAR, RSAVE:NEAR, RREST:NEAR, BINASC:NEAR
+
+STKSEG  SEGMENT STACK                   ; *** STACK SEGMENT ***
+        DB      128 DUP(?)
+STKSEG  ENDS
+
+CSEG    SEGMENT PUBLIC                  ; *** CODE SEGMENT ***
+        ASSUME CS:CSEG, DS:CSEG, SS:STKSEG, ES:NOTHING
+
+; All the textual data here
+HDRMSG  DB      'Machine Problem 2 -- Units Conversion Utility',CR,LF
+        DB      'Enter a measurement in total inches.  The program will',CR,LF
+        DB      'then convert this measurement to yards, feet, and',CR,LF
+        DB      'inches.  It also give the number of inches in centi-',CR,LF
+        DB      'meters to the nearest tenth.',CR,LF,CR,LF
+        DB      'Type a number between -1290 and +1290 at the prompt.',CR,LF
+        DB      'Press ESC to cancel the line, the backspace key to',CR,LF
+        DB      'remove the last digit typed.  Press CTRL-D to terminate',CR,LF
+        DB      'execution of the program.',CR,LF,CR,LF,'$'
+PROMPT  DB      'Enter a measurement in inches % ','$'
+ERRMSG  DB      CR,LF,'Invalid input data.',CR,LF,CR,LF,'$'
+YRDMSG1 DB      'Distance is: ','$'
+YRDMSG2 DB      ' yard(s), ','$'
+YRDMSG3 DB      ' foot (feet), and ','$'
+YRDMSG4 DB      ' inch(es).',CR,LF,'$'
+CENTMSG DB      'Distance in centimeters: ','$'
+CRLF    DB      CR,LF,'$'
+BUFFER  DB      256 DUP(?)              ; USED BY GETLN
+NUMBER  DB      7 DUP(?)                ; USED FOR BINASC
+
+MAIN    PROC    FAR
+        MOV     AX, CSEG                ; INITIALIZE DS REGISTER
+        MOV     DS, AX
+        LEA     DX, HDRMSG              ; DISPLAY HEADER MESSAGE
+        CALL    DSPMSG
+TOPLP:  LEA     DX, PROMPT              ; PROMPT FOR INPUT
+        CALL    DSPMSG
+        CALL    INCHES                  ; READ IN NUMBER OF INCHES
+        CMP     DX, 0                   ; CHECK RETURN VALUE OF SUBROUTINE
+        JL      MP1XIT                  ;  DX < 0: QUIT
+        JG      ERROR                   ;  DX > 0: INVALID INPUT
+        LEA     DX, CRLF                ;  ELSE EVERYTHING'S FINE!
+        CALL    DSPMSG
+        CALL    YARDS                   ; CALL YARDS CONVERSION ROUTINE
+        CALL    CENTI                   ; CALL CENTIMETER CONV. ROUTINE
+        LEA     DX, CRLF                ; DISPLAY A NEWLINE
+        CALL    DSPMSG
+        JMP     TOPLP
+ERROR:  LEA     DX, ERRMSG              ; PRINT ERROR MESSAGE
+        CALL    DSPMSG
+        JMP     TOPLP                   ;  AND TRY AGAIN...
+MP1XIT: CALL    DOSXIT                  ; EXIT TO DOS
+MAIN    ENDP
+
+; INCHES SUBROUTINE: INPUTS A LINE OF CHARACTERS AND CONVERTS IT TO INTEGER
+;       INPUTS -- NONE
+;       OUTPUT -- AX CONTAINS THE INTEGER VALUE OF THE STRING
+;                 DX < 0: A CTRL-D WAS HIT, AND PROGRAM SHOULD EXIT
+;                 DX = 0: CONVERSION WAS A SUCCESS!
+;                 DX > 0: AN ERROR OCCURED DURRING CONVERSION.
+INCHES  PROC    NEAR
+        CALL    RSAVE                   ; SAVE REGISTERS
+INCHTP: LEA     BX, BUFFER              ; GET A LINE OF ASCII CHARS IN BUFFER
+        CALL    GETLN
+        MOV     BP, SP                  ; SETUP BP TO MOVE THE NEW VALUE
+        MOV     DXTMP[BP], DX           ;  DX OVER THE OLD IN THE STACK
+        PUSH    DX                      ; SAVE DX WHILE NEWLINE IS DISPLAYED
+        LEA     DX, CRLF                ; PRINT A NEWLINE
+        CALL    DSPMSG
+        POP     DX
+        CMP     DX, 0                   ; CHECK TO SEE IF ESC OR CTRL-D WAS
+        JE      VALID                   ;  HIT
+        PUSH    DX
+        MOV     DX, -1
+        MOV     DXTMP[BP], DX           ; OVERWRITE DX IN STACK
+        POP     DX
+        CMP     DL, CTRLD               ; CHECK CTRL-D
+        JE      INXIT
+        CMP     DL, ESCKEY              ; CHECK ESC-KEY
+        JNE     VALID
+        LEA     DX, PROMPT              ; REDISPLAY PROMPT
+        CALL    DSPMSG
+        JMP     INCHTP                  ;  AND START AGAIN
+VALID:  CALL    ASCBIN                  ; CONVERT BUFFER TO AN INTEGER
+        CMP     DL, 0                   ; CHECK TO SEE IF NUMBER IS IN RANGE
+        JNE     INCH2
+        CMP     AX, 1290                ; CHECK TO SEE IF < +1290
+        JLE     INCH1
+        INC     DL                      ;  NOPE, SO GENERATE AN ERROR
+        JMP     INCH2
+INCH1:  CMP     AX, -1290               ; CHECK TO SEE IF > -1290
+        JGE     INCH2
+        INC     DL                      ;  NOPE, SO GENERATE AN ERROR
+INCH2:  MOV     DH, 0                   ; MOVE 0 INTO DH, JUST TO BE SURE
+        MOV     BP, SP                  ; ALTER THE SAVED REGISTERS
+        MOV     DXTMP[BP], DX           ;  OVERWRITE DX
+        MOV     AXTMP[BP], AX           ;  OVERWRITE AX
+INXIT:  CALL    RREST                   ; RESTORE REGISTERS
+        RET
+INCHES  ENDP
+
+; YARDS SUBROUTINE: TAKES A MEASUREMENT IN INCHES, CONVERTS THIS TO YARDS,
+;       FEET, AND INCHES, AND PRINTS IT ON THE SCREEN.
+;
+;       INPUTS -- AX CONTAINS AN INTEGER VALUE
+;       OUTPUT -- NONE
+YARDS   PROC NEAR
+        CALL    RSAVE                   ; SAVE REGISTERS
+        LEA     DX, YRDMSG1             ; ATTEMPT FORMATTED OUTPUT
+        CALL    DSPMSG
+        MOV     DL, 36                  ; DIVIDE AX BY 36 INCHES (1 YARD)
+        IDIV    DL                      ;  AL = # OF YARDS
+        PUSH    AX                      ; SAVE AX FOR A SECOND...
+        CBW                             ; CONVERT QUOTIENT TO AL WORD IN AX
+        LEA     BX, NUMBER              ; SETUP BX FOR BINASC
+        CALL    BINASC                  ;  CONVERT AX
+        MOV     DX, BX                  ;  AND PRINT IT
+        CALL    DSPMSG
+        LEA     DX, YRDMSG2             ; LABEL OUTPUT
+        CALL    DSPMSG
+        POP     AX                      ; GET AX BACK WHICH HAS LEFTOVER
+        MOV     AL, AH                  ;  INCHES IN AH
+        CBW                             ; CONVERT TO A WORD
+        MOV     DL, 12                  ; DIVIDE AX BY 12 INCHES (1 FOOT)
+        IDIV    DL
+        PUSH    AX                      ; SAVE AX
+        CBW
+        LEA     BX, NUMBER              ; SETUP BX FOR BINASC
+        CALL    BINASC                  ;  CONVERT IT
+        MOV     DX, BX                  ;  AND PRINT IT
+        CALL    DSPMSG
+        LEA     DX, YRDMSG3             ; LABEL OUTPUT
+        CALL    DSPMSG
+        POP     AX                      ; GET AX BACK
+        MOV     AL, AH                  ;  WHICH HAS INCHES IN AH
+        CBW                             ; CONVERT TO A WORD
+        LEA     BX, NUMBER              ; SETUP BX FOR BINASC
+        CALL    BINASC                  ;  CONVERT IT
+        MOV     DX, BX                  ;  AND PRINT IT
+        CALL    DSPMSG
+        LEA     DX, YRDMSG4             ; LABEL OUTPUT
+        CALL    DSPMSG
+        CALL    RREST                   ; RESTORE REGISTERS
+        RET                             ;  AND RETURN
+YARDS   ENDP
+
+; CENTI SURBOURINE: CONVERTS A MEASUREMENT IN INTEGER INCHES TO CENTIMETERS
+;       TO THE NEAREST TENTH.  DISPLAYS THIS VALUE ON THE SCREEN.
+;       (1 INCH = 2.54 CENTIMETERS)
+;       INPUTS -- AX CONTAINS INTEGER INCHES
+;       OUTPUT -- NONE
+CENTI   PROC    NEAR
+        CALL    RSAVE                   ; SAVE REGISTERS
+        LEA     DX, CENTMSG             ; LABEL THE OUTPUT
+        CALL    DSPMSG
+        MOV     DX, 254                 ; MULTIPLY AX BY 254
+        IMUL    DX                      ; RESULT IS IN DX:AX, BUT FITS IN AX
+        MOV     BX, 100                 ; NOW DIVIDE RESULT BY 100
+        IDIV    BX
+        PUSH    DX                      ; SAVE DX (REMAINDER)
+        LEA     BX, NUMBER              ; CONVERT AX TO A STRING
+        CALL    BINASC
+        MOV     DX, BX                  ;  AND PRINT IT
+        CALL    DSPMSG
+        MOV     DL, '.'                 ; DISPLAY DECIMAL
+        CALL    DSPOUT
+        POP     DX                      ; GET DX (REMAINDER) BACK
+        CMP     DX, 0                   ; MAKE DECIMAL POSITIVE
+        JG      CENTI1
+        NEG     DX
+CENTI1: MOV     AX, DX                  ; DIVIDE DECIMAL PORTION BY 10
+        MOV     DL, 10
+        IDIV    DL
+        CMP     AH, 5                   ; IF REMAINDER IS > 5
+        JL      CENTI2                  ;  ROUND UP
+        INC     AL
+CENTI2: CBW                             ; BY NOW DECIMAL IS IN AL, SO
+        LEA     BX, NUMBER              ;  STRETCH IT TO AX, CONVERT
+        CALL    BINASC                  ;  IT TO A STRING AND THEN
+        MOV     DX, BX                  ;  PRINT IT
+        CALL    DSPMSG
+        LEA     DX, CRLF                ; PRINT A NEWLINE
+        CALL    DSPMSG
+        CALL    RREST                   ; RESTORE REGISTERS
+        RET                             ;  AND RETURN
+CENTI   ENDP
+
+; GETLN SUBROUTINE: GETS A LINE OF ASCII CHARACTERS AND PUT IT IN THE ADDRESS
+;       CONTAINED BY BX.  IMPLEMENTS BACKSPACE KEY, ESC KEY CLEARS INPUT.
+;       MAXIMUM LINE LENGTH IS 254 CHARACTERS.  IT APPENDS A '$' TO DENOTE
+;       THE END OF THE STRING.  INPUT TERMINATES WITH A CR OR MORE THAN
+;       254 CHARCTERS.
+;
+;       INPUTS -- BX CONTAINS OFFSET TO A BUFFER OF 256 BYTES.
+;       OUTPUT -- THE STRING IS IN THE BUFFER
+;                 DX = 0 STRING IS IN THE BUFFER
+;                 DX > 0 IF A SPEIAL KEY WAS HIT(CTRL-D OR ESCKEY) DX
+;                       WILL CONTAIN THE ASCII CODE OF THE VALUE
+
+GETLN   PROC NEAR
+        MOV     DX, 0                   ; ASSUME CTRL-D IS NOT HIT
+        CALL    RSAVE                   ; SAVE REGISTERS
+        MOV     DI, 0
+GETLN1: CMP     DI, 254
+        JE      GETEND                  ; IF AT 254 CHARS, QUIT
+        CALL    KBDIN                   ; FETCH A CHARACTER FROM THE KBD
+        CMP     AL, '$'                 ; CANNOT INPUT STRING TERMINATOR!
+        JE      GETLN1
+        CMP     AL, CR                  ; CHEC TO SEE IF IT'S A CR
+        JE      GETEND
+        CMP     AL, BS                  ; CHECK TO SEE IF IT'S A BS
+        JE      GETBS
+        CMP     AL, ESCKEY              ; CHECK TO SEE IF IT'S A ESCKEY
+        JE      GETESC
+        CMP     AL, CTRLD               ; CHECK TO SEE IF IT'S A CTRL-D
+        JE      GETXIT
+        CMP     AL, '+'                 ; CHECK TO SEE IF LEADING PLUS
+        JE      LDSIGN
+        CMP     AL, '-'                 ; CHECK TO SEE IF LEADING MINUS
+        JE      LDSIGN
+        CMP     AL, '0'                 ; CHECK TO SEE IF < '0'
+        JB      GETLN1                  ;  IF IT IS, IGNORE IT
+        CMP     AL, '9'                 ; CHECK TO SEE IF > '9'
+        JA      GETLN1                  ;  IF IT IS, IGNORE IT
+ECHO:   MOV     DL, AL                  ; ECHO CHARACTER
+        CALL    DSPOUT
+        MOV     [BX+DI], AL             ; PUT CHARACTER IN BUFFER
+        INC     DI                      ; INCREMENT BUFFER POINTER
+        JMP     GETLN1                  ; GET NEXT CHARACTER
+GETBS:  CMP     DI, 0                   ; IF AT BEGINING OF BUFFER IGNORE
+        JE      GETLN1                  ;  THE BS
+        MOV     DL, BS                  ; ECHO A BS+SPACE+BS
+        CALL    DSPOUT
+        MOV     DL, ' '
+        CALL    DSPOUT
+        MOV     DL, BS
+        CALL    DSPOUT
+        DEC     DI                      ; DECREMENT POINTER IN BUFFER
+        JMP     GETLN1
+        CMP     AL, ESCKEY              ; CHECK TO SEE IF ESC WAS HIT
+        JNE     GETLN
+GETESC: CALL    RREST                   ; GET REGISTERS BACK
+        MOV     DL, ESCKEY              ; MAKE DX = AX = ESCKEY
+        JMP     GETRET
+LDSIGN: CMP     DI, 0                   ; IF AFTER FIRST CHARCTER
+        JA      GETLN1                  ;  IGNORE IT
+        JMP     ECHO                    ;  OTHERWISE IT IS FINE.
+GETXIT: CALL    RREST                   ; GET REGISTERS BACK
+        MOV     DL, CTRLD               ; MAKE DX = CTRL-D
+        JMP     GETRET                  ;  AND RETURN
+GETEND: MOV     AL, '$'                 ; APPEND A STRING TERMINATOR
+        MOV     [BX+DI], AL
+        CALL    RREST
+GETRET: RET                             ;  AND RETURN
+GETLN   ENDP
+
+; CHKSTR SUBROUTINE: CHECKS TO SEE IF STRING AT BX CAN BE CONVERTED TO AN
+;       INTEGER.  i.e. MAKE SURE THERE ARE NO INVALID CHARACTERS.
+;
+;       INPUTS -- BX POINTS TO THE '$' TERMINATED STRING
+;       OUTPUT -- DX CONTAINS 0, IF STRING IS VALID OR > 0 IF NOT.
+CHKSTR  PROC    NEAR
+        MOV     DX, 0                   ; ASSUME STRING IS VALID
+        CALL    RSAVE                   ; SAVE THE REGISTERS
+        MOV     DI, 0                   ; START CHECKING FROM BEGINING
+        MOV     AL, [BX+DI]             ; GET CHAR
+        CMP     AL, '+'                 ; A LEADING '+' OR '-' IS OK
+        JE      CHKLP1
+        CMP     AL, '-'
+        JE      CHKLP1
+CHKLP:  CMP     AL, '$'                 ; STRING TERMINATOR REACHED
+        JE      CHKEND
+        CMP     AL, '0'                 ; ELSE CHECK TO SEE IF '0' < AL < '9'
+        JB      CHKBAD
+        CMP     AL, '9'
+        JA      CHKBAD
+CHKLP1: INC     DI                      ; SO FAR SO GOOD, SO KEEP CHECKING...
+        MOV     AL, [BX+DI]
+        JMP     CHKLP
+CHKBAD: INC     DX                      ; MAKE DX < 0
+        MOV     BP, SP                  ; PREPARE TO ALTER SAVED REGISTERS
+        MOV     DXTMP[BP], DX           ;  OVERWRITE DX
+CHKEND: CALL    RREST                   ; RESTORE REGISTERS
+        RET                             ; RETURN
+CHKSTR  ENDP
+
+CSEG    ENDS
+        END     MAIN

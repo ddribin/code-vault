@@ -1,0 +1,3 @@
+MASM MP2,,;
+LINK MP2,,,LIB291/MAP
+

@@ -1,0 +1,95 @@
+COMMENT         *
+                This file contains macros that deal with all sorts of stuff.
+                *
+
+PUSHM           MACRO   REGS
+; PUSHES A LIST OF REGISTERS ON THE STACK
+                IRP     REG, <REGS>
+                PUSH    REG
+                ENDM
+                ENDM
+
+POPM            MACRO   REGS
+; POPS A LIST OF REGISTERS FROM THE STACK
+                IRP     REG, <REGS>
+                POP     REG
+                ENDM
+                ENDM
+
+DOSXIT          MACRO
+; RETURNS TO DOS
+                MOV     AL, 0
+                MOV     AH, 4CH
+                INT     21H
+                ENDM
+
+PUSHMALL        MACRO
+; PUSHS ALL OF THE REGISTERS
+                PUSHM   <AX, BX, CX, DX, BP, SI, DI, DS, ES>
+                ENDM
+
+POPMALL         MACRO
+; POPS ALL OF THE REGISTERS
+                POPM    <ES, DS, DI, SI, BP, DX, CX, BX, AX>
+                ENDM
+
+SETWRITEMODE    MACRO   MODE
+; SETS CURRENT PIXEL WRITE MODE
+                MOV     WRITEMODE, MODE
+                ENDM
+
+; USE THESE EQU'S TO SET THE WRITE MODE
+WRITE_REPLACE   EQU     00000000b
+WRITE_AND       EQU     00001000b
+WRITE_OR        EQU     00010000b
+WRITE_XOR       EQU     00011000b
+
+SHRINK          MACRO   BLOCK, ROTATION
+; SETS DL TO THE COMPRESSED FORMAT OF A BLOCK OF TYPE BLOCK AND ROTATION
+                MOV     DL, BLOCK
+                SHL     DL, 1
+                SHL     DL, 1
+                ADD     DL, ROTATION
+                ENDM
+
+CURRENTBLOCK    MACRO
+; MAKES CURRENT BLOCK ACTIVE BLOCK
+                SHRINK  BLOCKTYPE, ROTATION
+                MOV     AX, ROW
+                MOV     BX, COLUMN
+                ENDM
+
+DECROTATION     MACRO
+                LOCAL L1, L2
+; MAKES A COUTER CLOCK WISE MOVEMENT
+                CMP     ROTATION, 0
+                JE      L1
+                DEC     ROTATION
+                JMP     L2
+L1:             MOV     ROTATION, 3
+L2:
+                ENDM
+
+INCROTATION     MACRO
+                LOCAL   L1
+; MAKES A CLOCK WISE MOVEMENT
+                INC     ROTATION
+                CMP     ROTATION, 4
+                JNE     L1
+                MOV     ROTATION, 0
+L1:
+                ENDM
+
+GETTIME         MACRO   PARAM
+; GETS TIMER VALUE AND PUTS IT IN PARAM
+                CLI
+                MOV     PARAM, TICKS
+                STI
+                ENDM
+
+DEBUG           MACRO
+                CALL    KBDIN
+                CALL    SETTEXT
+                DOSXIT
+                ENDM
+

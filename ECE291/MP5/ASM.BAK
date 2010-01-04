@@ -1,0 +1,3 @@
+MASM MP5,,;
+LINK MP5,,,LIB291/MAP
+
